@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include <stack>
+#include <ctime>
 #include <omp.h>
 
 using namespace std;
@@ -9,23 +9,24 @@ const int MAX = 100000;
 vector<int> graph[MAX];
 bool visited[MAX];
 
-void dfs(int node) {
-    stack<int> s;
-    s.push(node);
-    
-    while (!s.empty()) {
-        int curr_node = s.top();
-        s.pop();
+void parallel_dfs(int node) {
+    #pragma omp task firstprivate(node)
+    {
+        if (!visited[node]) {
+            #pragma omp critical
+            {
+                if (!visited[node]) {
+                    visited[node] = true;
+                    cout << node << " ";
+                } else {
+                    #pragma omp cancel task
+                }
+            }
 
-        if (!visited[curr_node]) {
-            visited[curr_node] = true;
-            cout << curr_node << " ";
-
-            // Now, we process adjacent nodes sequentially
-            for (int i = 0; i < graph[curr_node].size(); i++) {
-                int adj_node = graph[curr_node][i];
-                if (!visited[adj_node]) {
-                    s.push(adj_node);
+            for (int i = 0; i < graph[node].size(); i++) {
+                int neighbor = graph[node][i];
+                if (!visited[neighbor]) {
+                    parallel_dfs(neighbor);
                 }
             }
         }
@@ -34,28 +35,36 @@ void dfs(int node) {
 
 int main() {
     int n, m, start_node;
-    cout << "Enter No of Node, Edges, and start node:";
+    cout << "Enter number of nodes, edges, and start node: ";
     cin >> n >> m >> start_node;
     
-    // n: node, m: edges
-    cout << "Enter Pair of edges:";
+    cout << "Enter pairs of edges:\n";
     for (int i = 0; i < m; i++) {
         int u, v;
         cin >> u >> v;
-        
-        // u and v: Pair of edges
         graph[u].push_back(v);
         graph[v].push_back(u);
     }
 
-    // Parallel initialization of visited array
     #pragma omp parallel for
     for (int i = 0; i < n; i++) {
         visited[i] = false;
     }
 
-    // Start DFS from the given starting node
-    dfs(start_node);
+    // Using clock() instead of omp_get_wtime()
+    clock_t start = clock();
+    
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            parallel_dfs(start_node);
+            #pragma omp taskwait
+        }
+    }
+    
+    clock_t end = clock();
+    cout << "\nDFS took " << (double)(end - start)/CLOCKS_PER_SEC << " seconds\n";
 
     return 0;
 }
